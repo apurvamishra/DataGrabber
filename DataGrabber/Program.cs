@@ -51,6 +51,7 @@ namespace DataGrabber
             if (currentBeamID != lastCSVBeamID)
             {
                 Console.WriteLine($"New ID ${currentBeamID} detected. Storing in CSV.");
+                entries.AppendLine(db.ToShortString());
                 File.AppendAllText(fileNamePath, db.ToShortString());
             }
         }
