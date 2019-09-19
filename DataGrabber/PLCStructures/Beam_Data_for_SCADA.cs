@@ -61,7 +61,7 @@ namespace DataGrabber.PLCStructures
                    Beam.Value.Beam_Process_Stage.Value.moving_to_reject.Value + "," +
                    Beam.Value.Beam_Process_Stage.Value.beam_at_stillage.Value + "," +
                    Beam.Value.Beam_Process_Stage.Value.beam_on_paintline.Value + "," +
-                   Beam.Value.Beam_Process_Stage.Value.beam_at_reject.Value;
+                   Beam.Value.Beam_Process_Stage.Value.beam_at_reject.Value ;
         }
 
         public string CreateHeader()

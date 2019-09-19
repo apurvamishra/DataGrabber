@@ -37,22 +37,35 @@ namespace DataGrabber
                 {
                     File.ReadLines(fileNamePath).First();
                 }
-                catch (Exception ex)
+                catch (InvalidOperationException ex)
                 {
-                    Console.WriteLine("file was empty : " + ex.Message);
+                    Console.WriteLine("CSV file exits but is empty : Creating header and performing data entry.", ex.GetType().Name);
                     header.AppendLine(db.CreateHeader());
                     File.AppendAllText(fileNamePath, header.ToString());
+                }
+                catch (IOException ex)
+                {
+                    Console.WriteLine( "{0}: The CSV write operation could not be performed because the specified file is OPEN : Close all programs accessing the CSV file, skipping CSV write operations. \n", ex.GetType().Name);
+                    return;
                 }
             }
 
             // Check for new beam
             string currentBeamID = db.Beam.Value.Beam_Parameters.Value.ID.Value.ToString();
             string lastCSVBeamID = File.ReadLines(fileNamePath).Last().Split(',')[0];
+            Console.WriteLine("Checking for new Beam ID in CSV ....");
+            Console.WriteLine((lastCSVBeamID == "BeamID" ? "Old Beam ID = None " : "Old Beam ID = " + lastCSVBeamID));
+            Console.WriteLine("Current Beam ID = " + currentBeamID);
+            
             if (currentBeamID != lastCSVBeamID)
             {
-                Console.WriteLine($"New ID ${currentBeamID} detected. Storing in CSV.");
+                Console.WriteLine($"New Beam ID {currentBeamID}.....Storing in CSV." + "\n");
                 entries.AppendLine(db.ToShortString());
-                File.AppendAllText(fileNamePath, db.ToShortString());
+                File.AppendAllText(fileNamePath, entries.ToString());
+            }
+            else
+            {
+                Console.WriteLine($"New Beam ID Not detected" + "\n");
             }
         }
         static void WriteToSqlDB( SqlConnection cnn,Beam_Data_for_SCADA db)
@@ -65,7 +78,7 @@ namespace DataGrabber
             //We can then read all the table rows one by one using the data reader.
             SqlDataReader dataReader;
             string currentBeamID = db.Beam.Value.Beam_Parameters.Value.ID.Value.ToString();
-            string lastDBEntryResult = "", lastDBEntryQuery = "SELECT BeamID FROM Beams WHERE BeamID not in (SELECT TOP (SELECT COUNT(1)-1 FROM Beams) BeamID FROM Beams)";
+            string lastDBEntryResult = "", lastDBEntryQuery = "SELECT BeamID FROM Beams where [Beam Processed Timestamp]=(SELECT MAX ([Beam Processed Timestamp]) FROM Beams)";
 
             //Read last entry from Database
             //Command object, which is used to execute the SQL statement against the database
@@ -84,14 +97,8 @@ namespace DataGrabber
             Console.WriteLine("Checking for new Beam ID in Database ....");
             Console.WriteLine((lastDBEntryResult == null ? "Old Beam ID in Database = None " : "Old Beam ID in Database = " + lastDBEntryResult));
             Console.WriteLine("Current Beam ID = " + currentBeamID);
-            bool newEntryResult = currentBeamID.Equals(lastDBEntryResult);
-           if (newEntryResult)
+            if (currentBeamID != lastDBEntryResult)
             {
-                Console.WriteLine($" ....new ID Not Detected!");
-            }
-            else
-            {
-                
                 Console.WriteLine($" ....new ID Detected. Storing in Database .... ");
                 //DataAdapter object is used to perform specific SQL operations such as insert, delete and update commands
                 SqlDataAdapter adapter = new SqlDataAdapter();
@@ -104,6 +111,10 @@ namespace DataGrabber
                 //Dispose of all temp objects created
                 adapter.Dispose();
                 command.Dispose();
+            }
+            else
+            {
+                Console.WriteLine($" ....new ID Not Detected!");
             }
 
         }
