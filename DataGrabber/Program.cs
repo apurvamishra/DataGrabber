@@ -57,7 +57,7 @@ namespace DataGrabber
             Console.WriteLine((lastCSVBeamID == "BeamID" ? "Old Beam ID = None " : "Old Beam ID = " + lastCSVBeamID));
             Console.WriteLine("Current Beam ID = " + currentBeamID);
             
-            if (currentBeamID != lastCSVBeamID)
+            if ((currentBeamID != lastCSVBeamID))
             {
                 Console.WriteLine($"New Beam ID {currentBeamID}.....Storing in CSV." + "\n");
                 entries.AppendLine(db.ToShortString());
@@ -95,9 +95,9 @@ namespace DataGrabber
             //If new beam detected writing to SQL database
 
             Console.WriteLine("Checking for new Beam ID in Database ....");
-            Console.WriteLine((lastDBEntryResult == null ? "Old Beam ID in Database = None " : "Old Beam ID in Database = " + lastDBEntryResult));
+            Console.WriteLine((lastDBEntryResult == "" ? "Old Beam ID in Database = None " : "Old Beam ID in Database = " + lastDBEntryResult));
             Console.WriteLine("Current Beam ID = " + currentBeamID);
-            if (currentBeamID != lastDBEntryResult)
+            if ((currentBeamID != lastDBEntryResult))
             {
                 Console.WriteLine($" ....new ID Detected. Storing in Database .... ");
                 //DataAdapter object is used to perform specific SQL operations such as insert, delete and update commands
@@ -156,8 +156,8 @@ namespace DataGrabber
 
             JPLCConnection plc = new JPLCConnection("192.168.0.1", 0, 1);
             string csvFilepath = System.Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments) + "\\OPF.csv";
-            double timeBetweenRetries = 60; // seconds
-            double timeBetweenReads = 10; //seconds
+            double timeBetweenRetries = 70; // seconds
+            double timeBetweenReads = 60; //seconds
 
             // =================================================
             // Setup program
