@@ -121,7 +121,7 @@ namespace DataGrabber
 
         static void Main(string[] args)
         {
-            Console.WriteLine("One Piece Flow Data Grabber");
+            Console.WriteLine("One Piece Flow Data Grabber V6.0");
             Console.WriteLine("===========================");
 
             // =================================================
