@@ -22,7 +22,7 @@
     <UpdatePeriodically>false</UpdatePeriodically>
     <UpdateRequired>false</UpdateRequired>
     <MapFileExtensions>true</MapFileExtensions>
-    <ApplicationRevision>6</ApplicationRevision>
+    <ApplicationRevision>8</ApplicationRevision>
     <ApplicationVersion>1.0.0.%2a</ApplicationVersion>
     <UseApplicationTrust>false</UseApplicationTrust>
     <PublishWizardCompleted>true</PublishWizardCompleted>
@@ -96,6 +96,9 @@
       <DesignTime>True</DesignTime>
       <DependentUpon>BeamDatabaseDataSet.xsd</DependentUpon>
     </Compile>
+    <Compile Include="PLCStructures\Alarm_Code_UDT.cs" />
+    <Compile Include="PLCStructures\Faults_UDT.cs" />
+    <Compile Include="PLCStructures\Faults_for_SCADA.cs" />
     <Compile Include="PLCStructures\Beam_Data_for_SCADA.cs" />
     <Compile Include="PLCStructures\Beam_Data_UDT.cs" />
     <Compile Include="PLCStructures\Beam_History.cs" />

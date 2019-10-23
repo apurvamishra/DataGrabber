@@ -59,13 +59,20 @@ namespace DataGrabber
             
             if ((currentBeamID != lastCSVBeamID))
             {
-                Console.WriteLine($"New Beam ID {currentBeamID}.....Storing in CSV." + "\n");
-                entries.AppendLine(db.ToShortString());
-                File.AppendAllText(fileNamePath, entries.ToString());
+                if (currentBeamID != "0")
+                {
+                    Console.WriteLine($"New Beam ID {currentBeamID}.....Storing in CSV." + "\n");
+                    entries.AppendLine(db.ToShortString());
+                    File.AppendAllText(fileNamePath, entries.ToString());
+                }
+                else
+                {
+                    Console.WriteLine($"...new Beam ID Not detected, Null ID detected!" + "\n");
+                }
             }
             else
             {
-                Console.WriteLine($"New Beam ID Not detected" + "\n");
+                Console.WriteLine($"...new Beam ID Not detected!" + "\n");
             }
         }
         static void WriteToSqlDB( SqlConnection cnn,Beam_Data_for_SCADA db)
@@ -99,29 +106,36 @@ namespace DataGrabber
             Console.WriteLine("Current Beam ID = " + currentBeamID);
             if ((currentBeamID != lastDBEntryResult))
             {
-                Console.WriteLine($" ....new ID Detected. Storing in Database .... ");
-                //DataAdapter object is used to perform specific SQL operations such as insert, delete and update commands
-                SqlDataAdapter adapter = new SqlDataAdapter();
-                //Command object, which is used to execute the SQL statement against the database
-                command = new SqlCommand(db.SqlQueryInserting(), cnn);
-                //we now associate the insert SQL command to our adapter
-                adapter.InsertCommand = new SqlCommand(db.SqlQueryInserting(), cnn);
-                //then issue the ExecuteNonQuery method which is used to execute the Insert statement against our database
-                adapter.InsertCommand.ExecuteNonQuery();
-                //Dispose of all temp objects created
-                adapter.Dispose();
-                command.Dispose();
+                if (currentBeamID != "0")
+                {
+                    Console.WriteLine($" ....new ID Detected. Storing in Database .... ");
+                    //DataAdapter object is used to perform specific SQL operations such as insert, delete and update commands
+                    SqlDataAdapter adapter = new SqlDataAdapter();
+                    //Command object, which is used to execute the SQL statement against the database
+                    command = new SqlCommand(db.SqlQueryInserting(), cnn);
+                    //we now associate the insert SQL command to our adapter
+                    adapter.InsertCommand = new SqlCommand(db.SqlQueryInserting(), cnn);
+                    //then issue the ExecuteNonQuery method which is used to execute the Insert statement against our database
+                    adapter.InsertCommand.ExecuteNonQuery();
+                    //Dispose of all temp objects created
+                    adapter.Dispose();
+                    command.Dispose();
+                }
+                else
+                {
+                    Console.WriteLine($" ....new Beam ID Not Detected, Null ID detected!");
+                }
             }
             else
             {
-                Console.WriteLine($" ....new ID Not Detected!");
+                Console.WriteLine($" ....new Beam ID Not Detected!");
             }
 
         }
 
         static void Main(string[] args)
         {
-            Console.WriteLine("One Piece Flow Data Grabber V6.0");
+            Console.WriteLine("One Piece Flow Data Grabber V6.2");
             Console.WriteLine("===========================");
 
             // =================================================
@@ -157,13 +171,15 @@ namespace DataGrabber
             JPLCConnection plc = new JPLCConnection("192.168.0.1", 0, 1);
             string csvFilepath = System.Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments) + "\\OPF.csv";
             double timeBetweenRetries = 70; // seconds
-            double timeBetweenReads = 60; //seconds
+            double timeBetweenReads = 5; //seconds
 
             // =================================================
             // Setup program
             // =================================================
             var scadaDB = new Beam_Data_for_SCADA();
+            var faultDB = new Beam_Data_for_SCADA();
             var scadaDBNumber = 113;
+            var faultDBNumber = 114;
 
             // =================================================
             // Reading From PLC
