@@ -13,8 +13,6 @@ using System.Windows.Forms;
 using System.Globalization;
 using System.Reactive.Disposables;
 
-
-
 namespace DataGrabber
 {
     class Program
@@ -77,7 +75,7 @@ namespace DataGrabber
                 Console.WriteLine($"...new Beam ID Not detected!" + "\n");
             }
         }
-        static void WriteToSqlDB( SqlConnection cnn,Beam_Data_for_SCADA db)
+        static void WriteToSqlDB( SqlConnection cnn,Beam_Data_for_SCADA Beamsdb, Faults_for_SCADA Faultsdb)
         {
             //The 'SQLCommand' is a class defined within C#. 
             //This class defines objects which are used to perform SQL operations against a database. 
@@ -86,7 +84,7 @@ namespace DataGrabber
             //DataReader object is used to get all the data returned by an SQL query. 
             //We can then read all the table rows one by one using the data reader.
             SqlDataReader dataReader;
-            string currentBeamID = db.Beam.Value.Beam_Parameters.Value.ID.Value.ToString();
+            string currentBeamID = Beamsdb.Beam.Value.Beam_Parameters.Value.ID.Value.ToString();
             string lastDBEntryResult = "", lastDBEntryQuery = "SELECT BeamID FROM Beams where [Beam Processed Timestamp]=(SELECT MAX ([Beam Processed Timestamp]) FROM Beams)";
 
             //Read last entry from Database
@@ -114,9 +112,9 @@ namespace DataGrabber
                     //DataAdapter object is used to perform specific SQL operations such as insert, delete and update commands
                     SqlDataAdapter adapter = new SqlDataAdapter();
                     //Command object, which is used to execute the SQL statement against the database
-                    command = new SqlCommand(db.SqlQueryInserting(), cnn);
+                    command = new SqlCommand(Beamsdb.SqlQueryInserting(), cnn);
                     //we now associate the insert SQL command to our adapter
-                    adapter.InsertCommand = new SqlCommand(db.SqlQueryInserting(), cnn);
+                    adapter.InsertCommand = new SqlCommand(Beamsdb.SqlQueryInserting(), cnn);
                     //then issue the ExecuteNonQuery method which is used to execute the Insert statement against our database
                     adapter.InsertCommand.ExecuteNonQuery();
                     //Dispose of all temp objects created
@@ -186,7 +184,6 @@ namespace DataGrabber
             // =================================================
             // Reading From PLC
             // =================================================
-            
 
             // BEAM DATA
             var readDBObservable = Observable.Create<Beam_Data_for_SCADA>(o =>
@@ -254,15 +251,17 @@ namespace DataGrabber
                     //===============================================================================
                     // THIS SECTION OF CODE WILL REPEAT
 
-                    Console.WriteLine("\n" + $"Reading from PLC DataBase on {DateTime.Now}");
+                    Console.WriteLine("\n" + $"Reading from PLC Beam / Fault DataBase on {DateTime.Now}");
                     Console.WriteLine(beamdb);
                     WriteToCSV(csvFilepath, beamdb);
-                    WriteToSqlDB(cnn , beamdb);
+                    WriteToSqlDB(cnn , beamdb, faultdb);
 
-                    Console.WriteLine(faultdb);
+                    Console.WriteLine("\n" + $"Reading from PLC Fault DataBase on {DateTime.Now}");
+                    //Console.WriteLine(faultdb);
+                    //WriteToSqlDB(cnn, faultdb);
                     // faultdb.DBNumber...
 
-                });
+                });                 
 
 
 
