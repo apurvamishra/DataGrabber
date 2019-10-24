@@ -13,6 +13,8 @@ using System.Windows.Forms;
 using System.Globalization;
 using System.Reactive.Disposables;
 
+
+
 namespace DataGrabber
 {
     class Program
@@ -184,7 +186,7 @@ namespace DataGrabber
             // =================================================
             // Reading From PLC
             // =================================================
-
+            
 
             // BEAM DATA
             var readDBObservable = Observable.Create<Beam_Data_for_SCADA>(o =>
@@ -222,9 +224,7 @@ namespace DataGrabber
             var combinedDBObservable = Observable.Zip(readDBObservable, readFaultDBObservable, (beamdb, faultdb) => (beamdb, faultdb));
 
 
-            //var observable = Observable.Create<(Beam_Data_for_SCADA, Beam_Data_for_SCADA)>(o =>
             var observable = Observable.Create<(Beam_Data_for_SCADA, Faults_for_SCADA)>(o =>
-            //var observable = Observable.Create<Beam_Data_for_SCADA>(o =>
             {
                 Console.WriteLine($"Attempting to connect to PLC on ip={plc.IPAddress}, rack={plc.Rack}, slot={plc.Slot}");
                 if (plc.Connect() != 0)
