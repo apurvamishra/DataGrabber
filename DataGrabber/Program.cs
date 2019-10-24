@@ -135,7 +135,7 @@ namespace DataGrabber
 
         static void Main(string[] args)
         {
-            Console.WriteLine("One Piece Flow Data Grabber V6.2");
+            Console.WriteLine("One Piece Flow Data Grabber V6.3");
             Console.WriteLine("===========================");
 
             // =================================================
@@ -170,7 +170,7 @@ namespace DataGrabber
 
             JPLCConnection plc = new JPLCConnection("192.168.0.1", 0, 1);
             string csvFilepath = System.Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments) + "\\OPF.csv";
-            double timeBetweenRetries = 70; // seconds
+            double timeBetweenRetries = 6; // seconds
             double timeBetweenReads = 5; //seconds
 
             // =================================================
@@ -202,11 +202,10 @@ namespace DataGrabber
                 }
                 return Disposable.Empty;
             });
-
             // FAULT DATA
             var readFaultDBObservable = Observable.Create<Faults_for_SCADA>(o =>
             {
-                var result = scadaDB.ReadFromDB(plc, faultDBNumber);
+                var result = faultDB.ReadFromDB(plc, faultDBNumber);
                 if (result != 0)
                 {
                     o.OnError(new Exception("Could not read from DB"));
@@ -220,8 +219,12 @@ namespace DataGrabber
                 return Disposable.Empty;
             });
 
+            var combinedDBObservable = Observable.Zip(readDBObservable, readFaultDBObservable, (beamdb, faultdb) => (beamdb, faultdb));
 
-            var observable = Observable.Create<System.Reactive.Unit>(o =>
+
+            //var observable = Observable.Create<(Beam_Data_for_SCADA, Beam_Data_for_SCADA)>(o =>
+            var observable = Observable.Create<(Beam_Data_for_SCADA, Faults_for_SCADA)>(o =>
+            //var observable = Observable.Create<Beam_Data_for_SCADA>(o =>
             {
                 Console.WriteLine($"Attempting to connect to PLC on ip={plc.IPAddress}, rack={plc.Rack}, slot={plc.Slot}");
                 if (plc.Connect() != 0)
@@ -238,16 +241,16 @@ namespace DataGrabber
             })
             .Concat(
                 Observable.Interval(TimeSpan.FromSeconds(timeBetweenReads))
-                .Zip(readDBObservable.Repeat(), readFaultDBObservable.Repeat(), (i, db, fdb) => (db, fdb))
+                .Zip(combinedDBObservable, (interval, dbs) => dbs).Repeat()
             );
 
 
             var disposable = observable
                 .ObserveOn(System.Reactive.Concurrency.TaskPoolScheduler.Default)
                 .RetryWhen(errors => errors.SelectMany(Observable.Timer(TimeSpan.FromSeconds(timeBetweenRetries))))
-                .Subscribe((beamdb, faultdb) =>
+                .Subscribe(dbs =>
                 {
-
+                    var (beamdb, faultdb) = dbs;
                     //===============================================================================
                     // THIS SECTION OF CODE WILL REPEAT
 
@@ -255,7 +258,9 @@ namespace DataGrabber
                     Console.WriteLine(beamdb);
                     WriteToCSV(csvFilepath, beamdb);
                     WriteToSqlDB(cnn , beamdb);
+
                     Console.WriteLine(faultdb);
+                    // faultdb.DBNumber...
 
                 });
 
