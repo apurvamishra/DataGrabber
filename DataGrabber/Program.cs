@@ -177,7 +177,7 @@ namespace DataGrabber
             // Setup program
             // =================================================
             var scadaDB = new Beam_Data_for_SCADA();
-            var faultDB = new Beam_Data_for_SCADA();
+            var faultDB = new Faults_for_SCADA();
             var scadaDBNumber = 113;
             var faultDBNumber = 114;
 
@@ -185,6 +185,8 @@ namespace DataGrabber
             // Reading From PLC
             // =================================================
 
+
+            // BEAM DATA
             var readDBObservable = Observable.Create<Beam_Data_for_SCADA>(o =>
             {
                 var result = scadaDB.ReadFromDB(plc, scadaDBNumber);
@@ -201,8 +203,25 @@ namespace DataGrabber
                 return Disposable.Empty;
             });
 
+            // FAULT DATA
+            var readFaultDBObservable = Observable.Create<Faults_for_SCADA>(o =>
+            {
+                var result = scadaDB.ReadFromDB(plc, faultDBNumber);
+                if (result != 0)
+                {
+                    o.OnError(new Exception("Could not read from DB"));
+                    Console.WriteLine("Read failure");
+                }
+                else
+                {
+                    o.OnNext(faultDB);
+                    o.OnCompleted();
+                }
+                return Disposable.Empty;
+            });
 
-            var observable = Observable.Create<Beam_Data_for_SCADA>(o =>
+
+            var observable = Observable.Create<System.Reactive.Unit>(o =>
             {
                 Console.WriteLine($"Attempting to connect to PLC on ip={plc.IPAddress}, rack={plc.Rack}, slot={plc.Slot}");
                 if (plc.Connect() != 0)
@@ -217,26 +236,31 @@ namespace DataGrabber
                 }
                 return Disposable.Empty;
             })
-            .Concat(Observable.Interval(TimeSpan.FromSeconds(timeBetweenReads)).Zip(readDBObservable.Repeat(), (i, db) => db));
+            .Concat(
+                Observable.Interval(TimeSpan.FromSeconds(timeBetweenReads))
+                .Zip(readDBObservable.Repeat(), readFaultDBObservable.Repeat(), (i, db, fdb) => (db, fdb))
+            );
 
 
             var disposable = observable
                 .ObserveOn(System.Reactive.Concurrency.TaskPoolScheduler.Default)
                 .RetryWhen(errors => errors.SelectMany(Observable.Timer(TimeSpan.FromSeconds(timeBetweenRetries))))
-                
-                .Subscribe(yourdb =>
+                .Subscribe((beamdb, faultdb) =>
                 {
 
                     //===============================================================================
                     // THIS SECTION OF CODE WILL REPEAT
 
                     Console.WriteLine("\n" + $"Reading from PLC DataBase on {DateTime.Now}");
-                    Console.WriteLine(yourdb);
-                    WriteToCSV(csvFilepath, yourdb);
-                    WriteToSqlDB(cnn ,yourdb);
-
+                    Console.WriteLine(beamdb);
+                    WriteToCSV(csvFilepath, beamdb);
+                    WriteToSqlDB(cnn , beamdb);
+                    Console.WriteLine(faultdb);
 
                 });
+
+
+
 
 
 
