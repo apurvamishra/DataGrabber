@@ -12,6 +12,7 @@ using System.Data.SqlClient;
 using System.Windows.Forms;
 using System.Globalization;
 using System.Reactive.Disposables;
+using System.Reflection;
 
 namespace DataGrabber
 {
@@ -75,7 +76,7 @@ namespace DataGrabber
                 Console.WriteLine($"...new Beam ID Not detected!" + "\n");
             }
         }
-        static void WriteToSqlDB( SqlConnection cnn,Beam_Data_for_SCADA Beamsdb, Faults_for_SCADA Faultsdb)
+        static void WriteToSqlDB( SqlConnection cnn,Beam_Data_for_SCADA Beamsdb, Fault_Data_for_SCADA Faultsdb)
         {
             //The 'SQLCommand' is a class defined within C#. 
             //This class defines objects which are used to perform SQL operations against a database. 
@@ -131,6 +132,32 @@ namespace DataGrabber
                 Console.WriteLine($" ....new Beam ID Not Detected!");
             }
 
+
+            // Read Faults from PLC and write to DB
+            //PropertyInfo[] robots = Faultsdb.Fault.GetType().GetProperties();
+            Type robots = Faultsdb.Fault.Value.GetType();
+            foreach (PropertyInfo robot in robots.GetProperties())
+            {
+
+                Console.WriteLine("{0}", robot);
+                
+
+                
+            }
+            foreach (Faults_UDT robot in Faultsdb.Fault.Value)
+            {
+
+                Console.WriteLine("{0}", robot);
+
+
+
+            }
+
+            Console.ReadKey();
+            /*foreach (var i in Faultsdb.Fault.Value.Robot_Buffering)
+            {
+                Console.WriteLine("{0}-{1}-{2}-{3}",i.Value.Alarm_No.Value, i.Value.Alarm_ID.Value, i.Value.Alarm_Severity.Value, i.Value.Alarm_Timestamp.Value);
+            }*/
         }
 
         static void Main(string[] args)
@@ -177,7 +204,7 @@ namespace DataGrabber
             // Setup program
             // =================================================
             var scadaDB = new Beam_Data_for_SCADA();
-            var faultDB = new Faults_for_SCADA();
+            var faultDB = new Fault_Data_for_SCADA();
             var scadaDBNumber = 113;
             var faultDBNumber = 114;
 
@@ -202,7 +229,7 @@ namespace DataGrabber
                 return Disposable.Empty;
             });
             // FAULT DATA
-            var readFaultDBObservable = Observable.Create<Faults_for_SCADA>(o =>
+            var readFaultDBObservable = Observable.Create<Fault_Data_for_SCADA>(o =>
             {
                 var result = faultDB.ReadFromDB(plc, faultDBNumber);
                 if (result != 0)
@@ -221,7 +248,7 @@ namespace DataGrabber
             var combinedDBObservable = Observable.Zip(readDBObservable, readFaultDBObservable, (beamdb, faultdb) => (beamdb, faultdb));
 
 
-            var observable = Observable.Create<(Beam_Data_for_SCADA, Faults_for_SCADA)>(o =>
+            var observable = Observable.Create<(Beam_Data_for_SCADA, Fault_Data_for_SCADA)>(o =>
             {
                 Console.WriteLine($"Attempting to connect to PLC on ip={plc.IPAddress}, rack={plc.Rack}, slot={plc.Slot}");
                 if (plc.Connect() != 0)
