@@ -171,3 +171,4 @@ namespace DataGrabber.PLCStructures
         }
     }
 }
+
