@@ -19,64 +19,8 @@ namespace DataGrabber
     class Program
     {
 
-        static void WriteToCSV(string fileNamePath, Beam_Data_for_SCADA db)
-        {
-            //CSV Builder
-            StringBuilder header = new StringBuilder();
-            StringBuilder entries = new StringBuilder();
 
-            //If file doesn't exit create one and add header
-            if (!File.Exists(fileNamePath))
-            {
-                header.AppendLine(db.CreateHeader());
-                File.AppendAllText(fileNamePath, header.ToString());
-            }
-            else
-            {
-                //If file exits but is empty, i.e. without a header/content then add a header
-                try
-                {
-                    File.ReadLines(fileNamePath).First();
-                }
-                catch (InvalidOperationException ex)
-                {
-                    Console.WriteLine("CSV file exits but is empty : Creating header and performing data entry.", ex.GetType().Name);
-                    header.AppendLine(db.CreateHeader());
-                    File.AppendAllText(fileNamePath, header.ToString());
-                }
-                catch (IOException ex)
-                {
-                    Console.WriteLine( "{0}: The CSV write operation could not be performed because the specified file is OPEN : Close all programs accessing the CSV file, skipping CSV write operations. \n", ex.GetType().Name);
-                    return;
-                }
-            }
-
-            // Check for new beam
-            string currentBeamID = db.Beam.Value.Beam_Parameters.Value.ID.Value.ToString();
-            string lastCSVBeamID = File.ReadLines(fileNamePath).Last().Split(',')[0];
-            Console.WriteLine("Checking for new Beam ID in CSV ....");
-            Console.WriteLine((lastCSVBeamID == "BeamID" ? "Old Beam ID = None " : "Old Beam ID = " + lastCSVBeamID));
-            Console.WriteLine("Current Beam ID = " + currentBeamID);
-            
-            if ((currentBeamID != lastCSVBeamID))
-            {
-                if (currentBeamID != "0")
-                {
-                    Console.WriteLine($"New Beam ID {currentBeamID}.....Storing in CSV." + "\n");
-                    entries.AppendLine(db.ToShortString());
-                    File.AppendAllText(fileNamePath, entries.ToString());
-                }
-                else
-                {
-                    Console.WriteLine($"...new Beam ID Not detected, Null ID detected!" + "\n");
-                }
-            }
-            else
-            {
-                Console.WriteLine($"...new Beam ID Not detected!" + "\n");
-            }
-        }
-        static void WriteToSqlDB( SqlConnection cnn,Beam_Data_for_SCADA Beamsdb, Fault_Data_for_SCADA Faultsdb)
+        static void WriteToSqlDB( SqlConnection cnn,Beams_for_SCADA Beamsdb, Faults_for_SCADA Faultsdb)
         {
             //The 'SQLCommand' is a class defined within C#. 
             //This class defines objects which are used to perform SQL operations against a database. 
@@ -85,7 +29,9 @@ namespace DataGrabber
             //DataReader object is used to get all the data returned by an SQL query. 
             //We can then read all the table rows one by one using the data reader.
             SqlDataReader dataReader;
-            string currentBeamID = Beamsdb.Beam.Value.Beam_Parameters.Value.ID.Value.ToString();
+            int currentBeamPointer = Beamsdb.Beams.Value.Beam_Pointer.Value - 1;
+            string currentBeamID = Beamsdb.Beams.Value.Beam[currentBeamPointer].Value.Beam_Parameters.Value.ID.Value.ToString();
+            string currentBeamDateStamp = Beamsdb.Beams.Value.Beam[currentBeamPointer].Value.Beam_Processing_Complete_Timestamp.Value.ToString("s", new CultureInfo("en-US"));
             string lastDBEntryResult = "", lastDBEntryQuery = "SELECT BeamID FROM Beams where [Beam Processed Timestamp]=(SELECT MAX ([Beam Processed Timestamp]) FROM Beams)";
 
             //Read last entry from Database
@@ -135,7 +81,7 @@ namespace DataGrabber
 
             // Read Faults from PLC and write to DB
             //PropertyInfo[] robots = Faultsdb.Fault.GetType().GetProperties();
-            Type robots = Faultsdb.Fault.Value.GetType();
+            Type robots = Faultsdb.Faults.Value.GetType();
             foreach (PropertyInfo robot in robots.GetProperties())
             {
 
@@ -144,14 +90,12 @@ namespace DataGrabber
 
                 
             }
-            foreach (Faults_UDT robot in Faultsdb.Fault.Value)
-            {
+            //foreach (Faults_UDT robot in Faultsdb.Faults.Value)
+            //{
 
-                Console.WriteLine("{0}", robot);
+             //   Console.WriteLine("{0}", robot);
 
-
-
-            }
+            //}
 
             Console.ReadKey();
             /*foreach (var i in Faultsdb.Fault.Value.Robot_Buffering)
@@ -203,8 +147,8 @@ namespace DataGrabber
             // =================================================
             // Setup program
             // =================================================
-            var scadaDB = new Beam_Data_for_SCADA();
-            var faultDB = new Fault_Data_for_SCADA();
+            var scadaDB = new Beams_for_SCADA();
+            var faultDB = new Faults_for_SCADA();
             var scadaDBNumber = 113;
             var faultDBNumber = 114;
 
@@ -213,7 +157,7 @@ namespace DataGrabber
             // =================================================
 
             // BEAM DATA
-            var readDBObservable = Observable.Create<Beam_Data_for_SCADA>(o =>
+            var readDBObservable = Observable.Create<Beams_for_SCADA>(o =>
             {
                 var result = scadaDB.ReadFromDB(plc, scadaDBNumber);
                 if (result != 0)
@@ -229,7 +173,7 @@ namespace DataGrabber
                 return Disposable.Empty;
             });
             // FAULT DATA
-            var readFaultDBObservable = Observable.Create<Fault_Data_for_SCADA>(o =>
+            var readFaultDBObservable = Observable.Create<Faults_for_SCADA>(o =>
             {
                 var result = faultDB.ReadFromDB(plc, faultDBNumber);
                 if (result != 0)
@@ -248,7 +192,7 @@ namespace DataGrabber
             var combinedDBObservable = Observable.Zip(readDBObservable, readFaultDBObservable, (beamdb, faultdb) => (beamdb, faultdb));
 
 
-            var observable = Observable.Create<(Beam_Data_for_SCADA, Fault_Data_for_SCADA)>(o =>
+            var observable = Observable.Create<(Beams_for_SCADA, Faults_for_SCADA)>(o =>
             {
                 Console.WriteLine($"Attempting to connect to PLC on ip={plc.IPAddress}, rack={plc.Rack}, slot={plc.Slot}");
                 if (plc.Connect() != 0)
@@ -280,13 +224,7 @@ namespace DataGrabber
 
                     Console.WriteLine("\n" + $"Reading from PLC Beam / Fault DataBase on {DateTime.Now}");
                     Console.WriteLine(beamdb);
-                    WriteToCSV(csvFilepath, beamdb);
                     WriteToSqlDB(cnn , beamdb, faultdb);
-
-                    Console.WriteLine("\n" + $"Reading from PLC Fault DataBase on {DateTime.Now}");
-                    //Console.WriteLine(faultdb);
-                    //WriteToSqlDB(cnn, faultdb);
-                    // faultdb.DBNumber...
 
                 });                 
 

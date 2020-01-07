@@ -5,11 +5,11 @@ using System.Reflection;
 
 namespace DataGrabber.PLCStructures
 {
-    public class Fault_Data_for_SCADA : JPLC_BASE
+    public class Faults_for_SCADA : JPLC_BASE
     {
         [Order(1)]
-        public JPLCProperty<Faults_UDT> Fault { get; set; }
-        public Fault_Data_for_SCADA(int address = 0) : base(address) { }
+        public JPLCProperty<Faults_UDT> Faults { get; set; }
+        public Faults_for_SCADA(int address = 0) : base(address) { }
 
         public override string ToString()
         {

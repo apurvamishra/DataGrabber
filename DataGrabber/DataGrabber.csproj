@@ -96,12 +96,12 @@
       <DesignTime>True</DesignTime>
       <DependentUpon>BeamDatabaseDataSet.xsd</DependentUpon>
     </Compile>
-    <Compile Include="PLCStructures\Alarm_Code_UDT.cs" />
+    <Compile Include="PLCStructures\Fault_UDT.cs" />
     <Compile Include="PLCStructures\Faults_UDT.cs" />
-    <Compile Include="PLCStructures\Fault_Data_for_SCADA.cs" />
-    <Compile Include="PLCStructures\Beam_Data_for_SCADA.cs" />
-    <Compile Include="PLCStructures\Beam_Data_UDT.cs" />
-    <Compile Include="PLCStructures\Beam_History.cs" />
+    <Compile Include="PLCStructures\Faults_for_SCADA.cs" />
+    <Compile Include="PLCStructures\Beams_for_SCADA.cs" />
+    <Compile Include="PLCStructures\Beam_UDT.cs" />
+    <Compile Include="PLCStructures\Beams_UDT.cs" />
     <Compile Include="PLCStructures\Beam_parameters_UDT.cs" />
     <Compile Include="PLCStructures\Beam_Process_Stages_UDT.cs" />
     <Compile Include="Program.cs" />

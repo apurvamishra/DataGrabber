@@ -3,7 +3,7 @@ using System;
 
 namespace DataGrabber.PLCStructures
 {
-    public class Alarm_CodeUDT : JPLC_BASE
+    public class Fault_UDT : JPLC_BASE
     {
         [Order(1)]
         public JPLCProperty<short> Alarm_No { get; set; }
@@ -14,6 +14,6 @@ namespace DataGrabber.PLCStructures
         [Order(4)]
         public JPLCProperty<DateTime> Alarm_Timestamp { get; set; }
 
-        public Alarm_CodeUDT(int address = 0) : base(address) { }
+        public Fault_UDT(int address = 0) : base(address) { }
     }
 }
