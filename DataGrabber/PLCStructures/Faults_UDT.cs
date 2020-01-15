@@ -10,7 +10,7 @@ namespace DataGrabber.PLCStructures
         public JPLCProperty<short> Fault_Pointer { get; set; }
 
         [Order(2)]
-        [ArraySize(200)]
+        [ArraySize(201)]
         public JPLCProperty<Fault_UDT>[] Robot_Faults { get; set; }
 
         public Faults_UDT(int address = 0) : base(address) { }

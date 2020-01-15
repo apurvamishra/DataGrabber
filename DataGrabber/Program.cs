@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using DataGrabber.PLCStructures;
+using DataGrabber.SQL;
 using JPLC;
 using System.Reactive.Linq;
 using System.IO;
@@ -20,7 +21,7 @@ namespace DataGrabber
     {
 
 
-        static void WriteToSqlDB( SqlConnection cnn,Beams_for_SCADA Beamsdb, Faults_for_SCADA Faultsdb)
+        static void WriteToSqlDB( SqlConnection cnn, sqlObjects sql , Beams_for_SCADA Beamsdb, Faults_for_SCADA Faultsdb)
         {
             //The 'SQLCommand' is a class defined within C#. 
             //This class defines objects which are used to perform SQL operations against a database. 
@@ -29,10 +30,19 @@ namespace DataGrabber
             //DataReader object is used to get all the data returned by an SQL query. 
             //We can then read all the table rows one by one using the data reader.
             SqlDataReader dataReader;
+            //Data from PLC
             int currentBeamPointer = Beamsdb.Beams.Value.Beam_Pointer.Value - 1;
-            string currentBeamID = Beamsdb.Beams.Value.Beam[currentBeamPointer].Value.Beam_Parameters.Value.ID.Value.ToString();
-            string currentBeamDateStamp = Beamsdb.Beams.Value.Beam[currentBeamPointer].Value.Beam_Processing_Complete_Timestamp.Value.ToString("s", new CultureInfo("en-US"));
-            string lastDBEntryResult = "", lastDBEntryQuery = "SELECT BeamID FROM Beams where [Beam Processed Timestamp]=(SELECT MAX ([Beam Processed Timestamp]) FROM Beams)";
+            int currentBeamID = Beamsdb.Beams.Value.Beam[currentBeamPointer].Value.Beam_Parameters.Value.ID.Value;
+            DateTime currentBeamDateStamp = Beamsdb.Beams.Value.Beam[currentBeamPointer].Value.Beam_Processing_Complete_Timestamp.Value;
+            long currentBeamDateStampTicks = currentBeamDateStamp.Ticks;
+            //Data from last entry in the database
+            int lastDBEntryBeamPointer = 999; //can never be 999 as the buffer can fit 200 entires only
+            bool lastDBEntryBeamPointerNULL = false, lastDBEntryBeamIDNULL = false, lastDBEntryBeamDateStampNULL = false, lastDBEntryBeamDateStampTicksNULL = false, databaseEmpty = false; ;
+            int lastDBEntryBeamID = 0; //beam being a physical quantity should not have a ID = 0
+            DateTime lastDBEntryBeamDateStamp = new DateTime();
+            long lastDBEntryBeamDateStampTicks = 0;
+            String databaseEmptyQuery = "SELECT Pointer, BeamID, [Beam Processed Timestamp] FROM Beams";
+            string lastDBEntryQuery = "SELECT Pointer, BeamID, [Beam Processed Timestamp], Ticks FROM Beams where [Beam Processed Timestamp]=(SELECT MAX ([Beam Processed Timestamp]) FROM Beams)";
 
             //Read last entry from Database
             //Command object, which is used to execute the SQL statement against the database
@@ -40,64 +50,334 @@ namespace DataGrabber
             dataReader = command.ExecuteReader();
             while (dataReader.Read())
             {
-                lastDBEntryResult = Convert.ToString(dataReader.GetValue(0));
-            };
-            dataReader.Close();
-            command.Dispose();
-
-            //Check if the Beam ID from current data stream is different to the last entry in Database
-            //If new beam detected writing to SQL database
-
-            Console.WriteLine("Checking for new Beam ID in Database ....");
-            Console.WriteLine((lastDBEntryResult == "" ? "Old Beam ID in Database = None " : "Old Beam ID in Database = " + lastDBEntryResult));
-            Console.WriteLine("Current Beam ID = " + currentBeamID);
-            if ((currentBeamID != lastDBEntryResult))
-            {
-                if (currentBeamID != "0")
+                if (Convert.ToString(dataReader.GetValue(0)) != "") // check if pointer entry is null, this is for backward compatibility
                 {
-                    Console.WriteLine($" ....new ID Detected. Storing in Database .... ");
-                    //DataAdapter object is used to perform specific SQL operations such as insert, delete and update commands
-                    SqlDataAdapter adapter = new SqlDataAdapter();
-                    //Command object, which is used to execute the SQL statement against the database
-                    command = new SqlCommand(Beamsdb.SqlQueryInserting(), cnn);
-                    //we now associate the insert SQL command to our adapter
-                    adapter.InsertCommand = new SqlCommand(Beamsdb.SqlQueryInserting(), cnn);
-                    //then issue the ExecuteNonQuery method which is used to execute the Insert statement against our database
-                    adapter.InsertCommand.ExecuteNonQuery();
-                    //Dispose of all temp objects created
-                    adapter.Dispose();
-                    command.Dispose();
+                    lastDBEntryBeamPointer = Convert.ToInt16(dataReader.GetValue(0));
                 }
                 else
                 {
-                    Console.WriteLine($" ....new Beam ID Not Detected, Null ID detected!");
+                    lastDBEntryBeamPointerNULL = true;
+                }
+                if (Convert.ToString(dataReader.GetValue(1)) != "") // check if beamID is Null
+                {
+                    lastDBEntryBeamID = Convert.ToInt16(dataReader.GetValue(1));
+                }
+                else
+                {
+                    lastDBEntryBeamIDNULL = true;
+                }
+                if (Convert.ToString(dataReader.GetValue(2)) != "") // check if Datetime is Null,
+                {
+                    lastDBEntryBeamDateStamp = Convert.ToDateTime(dataReader.GetValue(2));
+                }
+                else
+                {
+                    lastDBEntryBeamDateStampNULL = true;
+                }
+                if (Convert.ToString(dataReader.GetValue(3)) != "") // check if Datetime is Null,
+                {
+                    lastDBEntryBeamDateStampTicks = Convert.ToInt64(dataReader.GetValue(3));
+                }
+                else
+                {
+                    lastDBEntryBeamDateStampTicksNULL = true;
+                }
+            };
+            //Dispose of all temp objects created
+            dataReader.Close();
+            command.Dispose();
+
+            //Check to see if Database is empty or new 
+            //Command object, which is used to execute the SQL statement against the database
+            command = new SqlCommand(databaseEmptyQuery, cnn);
+            dataReader = command.ExecuteReader();
+            //dataReader.Read() will return a False if no entries were found in database
+            if (!dataReader.Read())
+            {
+                databaseEmpty = true;
+            };
+            //Dispose of all temp objects created
+            dataReader.Close();
+            command.Dispose();
+
+            //If database is empty
+            //Case 1
+            if (databaseEmpty)
+            {
+                // Write everything from PLC buffer to DB except for anything with beamID= 0 
+                foreach (var Beams in Beamsdb.Beams.Value.Beam)
+                {
+                    if (Beams.Value.Beam_Parameters.Value.ID.Value != 0)
+                    {
+                        Console.WriteLine("Writing Beam with ID:{0} to the database.", Beams.Value.Beam_Parameters.Value.ID.Value);
+                        //command is use to perform read and write operations in the database 
+                        //Command object, which is used to execute the SQL statement against the database
+                        command = new SqlCommand(sql.SqlQueryInserting(Beams.Value, currentBeamPointer), cnn);
+                        //DataAdapter object is used to perform specific SQL operations such as insert, delete and update commands
+                        SqlDataAdapter adapter = new SqlDataAdapter();
+                        //we now associate the insert SQL command to our adapter
+                        adapter.InsertCommand = new SqlCommand(sql.SqlQueryInserting(Beams.Value, currentBeamPointer), cnn);
+                        //then issue the ExecuteNonQuery method which is used to execute the Insert statement against our database
+                        adapter.InsertCommand.ExecuteNonQuery();
+                        //Dispose of all temp objects created
+                        adapter.Dispose();
+                        command.Dispose();
+                    }
                 }
             }
-            else
+                
+            // backward compatibility, when the last entry in Db has no pointer information
+            //Case 2
+            if (lastDBEntryBeamPointerNULL)
             {
-                Console.WriteLine($" ....new Beam ID Not Detected!");
+                // iterate thru plc buffer, search for entries not in database and write them to Database
+                foreach (var Beams in Beamsdb.Beams.Value.Beam)
+                {
+                    string BeamDateStampToSearch = Beams.Value.Beam_Processing_Complete_Timestamp.Value.ToString("s", new CultureInfo("en-US"));
+                    string searchQuery = "SELECT [Beam Processed Timestamp] FROM Beams where [Beam Processed Timestamp]='"+ BeamDateStampToSearch + "'";
+                    //string searchQuery = "SELECT [Beam Processed Timestamp] FROM Beams where [Beam Processed Timestamp]='2019-09-23T12:41:00'";
+                    //string searchQuery = "SELECT[Beam Processed Timestamp] FROM Beams where[BeamID] = 15";
+                    command = new SqlCommand(searchQuery, cnn);
+                    dataReader = command.ExecuteReader();
+                    //dataReader.Read() will return a False if no entries were found in database
+                    if (!dataReader.Read())
+                    {
+                        // if no entry was found and beam ID exist in PLC buffer then write to Database                         
+                        if (Beams.Value.Beam_Parameters.Value.ID.Value != 0)
+                        {
+                            Console.WriteLine("Writing Beam with ID:{0} to the database.", Beams.Value.Beam_Parameters.Value.ID.Value);
+                            //command is use to perform read and write operations in the database 
+                            //Command object, which is used to execute the SQL statement against the database
+                            command = new SqlCommand(sql.SqlQueryInserting(Beams.Value, currentBeamPointer), cnn);
+                            //DataAdapter object is used to perform specific SQL operations such as insert, delete and update commands
+                            SqlDataAdapter adapter = new SqlDataAdapter();
+                            //we now associate the insert SQL command to our adapter
+                            adapter.InsertCommand = new SqlCommand(sql.SqlQueryInserting(Beams.Value, currentBeamPointer), cnn);
+                            //then issue the ExecuteNonQuery method which is used to execute the Insert statement against our database
+                            adapter.InsertCommand.ExecuteNonQuery();
+                            //Dispose of all temp objects created
+                            adapter.Dispose();
+                            command.Dispose();
+                        }
+                    }
+                    //Dispose of all temp objects created
+                    dataReader.Close();
+                    command.Dispose();
+                }
+                
             }
 
+            //Check where the pointer from last DB entry sits with respect to current pointer in PLC buffer
+            //Case 3
+            if (currentBeamPointer == lastDBEntryBeamPointer)
+            {
+                if (currentBeamDateStampTicks < lastDBEntryBeamDateStampTicks)
+                {
+                    // PLC datetime configuration error 
+                    Console.WriteLine($" ....PLC datetime settings error! PLC datestamp shouldn't be older than the last record in database, entry rejected!");
+                }
+                if ((currentBeamID == lastDBEntryBeamID) && (currentBeamDateStampTicks == lastDBEntryBeamDateStampTicks))
+                {
+                    // do nothing 
+                    Console.WriteLine($" ....new Beam ID Not Detected, no entry made in Database.");
+                }
+                if (currentBeamDateStampTicks > lastDBEntryBeamDateStampTicks)
+                {
+                    // means PLC filled up the buffer and the buffer rolled over all the way back to the current pointer
+                    // Write everything from PLC buffer to DB except for anything with beamID= 0 
+                    foreach (var Beams in Beamsdb.Beams.Value.Beam)
+                    {
+                        if (Beams.Value.Beam_Parameters.Value.ID.Value != 0)
+                        {
+                            Console.WriteLine("Writing Beam with ID:{0} to the database.", Beams.Value.Beam_Parameters.Value.ID.Value);
+                            //command is use to perform read and write operations in the database 
+                            //Command object, which is used to execute the SQL statement against the database
+                            command = new SqlCommand(sql.SqlQueryInserting(Beams.Value, currentBeamPointer), cnn);
+                            //DataAdapter object is used to perform specific SQL operations such as insert, delete and update commands
+                            SqlDataAdapter adapter = new SqlDataAdapter();
+                            //we now associate the insert SQL command to our adapter
+                            adapter.InsertCommand = new SqlCommand(sql.SqlQueryInserting(Beams.Value, currentBeamPointer), cnn);
+                            //then issue the ExecuteNonQuery method which is used to execute the Insert statement against our database
+                            adapter.InsertCommand.ExecuteNonQuery();
+                            //Dispose of all temp objects created
+                            adapter.Dispose();
+                            command.Dispose();
+                        }
+                    }
+
+                }
+            }
+
+            //Check where the pointer from last DB entry sits with respect to current pointer in PLC buffer
+            //Case 4
+            if (currentBeamPointer > lastDBEntryBeamPointer)
+            {
+                if (currentBeamDateStampTicks < lastDBEntryBeamDateStampTicks)
+                {
+                    // PLC datetime configuration error 
+                    Console.WriteLine($" ....PLC datetime settings error! PLC datestamp shouldn't be older than the last record in database, entry rejected!");
+                }
+                if (currentBeamDateStampTicks == lastDBEntryBeamDateStampTicks)
+                {
+                    // PLC datetime configuration error 
+                    Console.WriteLine($" ....PLC datetime settings error! PLC datestamp should not be the same as the last recorded entry in database if the pointer has moved, entry rejected!");
+                }
+                // compare last DB entry with the same location on PLC buffer to determine roll overs
+                if (Beamsdb.Beams.Value.Beam[lastDBEntryBeamPointer].Value.Beam_Processing_Complete_Timestamp.Value.Ticks == lastDBEntryBeamDateStampTicks)
+                {
+                    // means PLC buffer is ahead of the Database and the PLC buffer has not rolled over all the way to the current PLC pointer
+                    // Write block of entries from the last DB entry pointer till the current pointer on PLC buffer to DB except for anything with beamID= 0 
+                    for (int i= lastDBEntryBeamPointer+1; i <= currentBeamPointer; i++)
+                    {
+                        if (Beamsdb.Beams.Value.Beam[i].Value.Beam_Parameters.Value.ID.Value != 0)
+                        {
+                            Console.WriteLine("Writing Beam with ID:{0} to the database.", Beamsdb.Beams.Value.Beam[i].Value.Beam_Parameters.Value.ID.Value);
+                            //command is use to perform read and write operations in the database 
+                            //Command object, which is used to execute the SQL statement against the database
+                            command = new SqlCommand(sql.SqlQueryInserting(Beamsdb.Beams.Value.Beam[i].Value, currentBeamPointer), cnn);
+                            //DataAdapter object is used to perform specific SQL operations such as insert, delete and update commands
+                            SqlDataAdapter adapter = new SqlDataAdapter();
+                            //we now associate the insert SQL command to our adapter
+                            adapter.InsertCommand = new SqlCommand(sql.SqlQueryInserting(Beamsdb.Beams.Value.Beam[i].Value, currentBeamPointer), cnn);
+                            //then issue the ExecuteNonQuery method which is used to execute the Insert statement against our database
+                            adapter.InsertCommand.ExecuteNonQuery();
+                            //Dispose of all temp objects created
+                            adapter.Dispose();
+                            command.Dispose();
+                        }
+                    }
+                }
+                // compare last DB entry with the same location on PLC buffer to determine roll overs
+                if (Beamsdb.Beams.Value.Beam[lastDBEntryBeamPointer].Value.Beam_Processing_Complete_Timestamp.Value.Ticks > lastDBEntryBeamDateStampTicks)
+                {
+                    // means PLC filled up the buffer and the buffer rolled over all the way back to the current pointer
+                    // Write everything from PLC buffer to DB except for anything with beamID= 0 
+                    foreach (var Beams in Beamsdb.Beams.Value.Beam)
+                    {
+                        if (Beams.Value.Beam_Parameters.Value.ID.Value != 0)
+                        {
+                            Console.WriteLine("Writing Beam with ID:{0} to the database.", Beams.Value.Beam_Parameters.Value.ID.Value);
+                            //command is use to perform read and write operations in the database 
+                            //Command object, which is used to execute the SQL statement against the database
+                            command = new SqlCommand(sql.SqlQueryInserting(Beams.Value, currentBeamPointer), cnn);
+                            //DataAdapter object is used to perform specific SQL operations such as insert, delete and update commands
+                            SqlDataAdapter adapter = new SqlDataAdapter();
+                            //we now associate the insert SQL command to our adapter
+                            adapter.InsertCommand = new SqlCommand(sql.SqlQueryInserting(Beams.Value, currentBeamPointer), cnn);
+                            //then issue the ExecuteNonQuery method which is used to execute the Insert statement against our database
+                            adapter.InsertCommand.ExecuteNonQuery();
+                            //Dispose of all temp objects created
+                            adapter.Dispose();
+                            command.Dispose();
+                        }
+                    }
+                }
+            }
+
+            //Check where the pointer from last DB entry sits with respect to current pointer in PLC buffer
+            //Case 5
+            if (currentBeamPointer < lastDBEntryBeamPointer)
+            {
+                if (currentBeamDateStampTicks < lastDBEntryBeamDateStampTicks)
+                {
+                    // PLC datetime configuration error 
+                    Console.WriteLine($" ....PLC datetime settings error! PLC datestamp shouldn't be older than the last record in database, entry rejected!");
+                }
+                if (currentBeamDateStampTicks == lastDBEntryBeamDateStampTicks)
+                {
+                    // PLC datetime configuration error 
+                    Console.WriteLine($" ....PLC datetime settings error! PLC datestamp should not be the same as the last recorded entry in database if the pointer has moved, entry rejected!");
+                }
+                // compare last DB entry with the same location on PLC buffer to determine roll overs
+                if (Beamsdb.Beams.Value.Beam[lastDBEntryBeamPointer].Value.Beam_Processing_Complete_Timestamp.Value.Ticks == lastDBEntryBeamDateStampTicks)
+                {
+                    // means PLC buffer filled up and now the PLC buffer pointers sits above the pointer from DB entry
+                    // PLC buffer reached pointer 200 and reset to 0 before incrementing again
+                    // Write block of entries from the last DB entry pointer till pointer 200 from PLC buffer and then again from 0 till current pointer from PLC buffer 
+                    for (int i = lastDBEntryBeamPointer + 1; i <= 200; i++)
+                    {
+                        if (Beamsdb.Beams.Value.Beam[i].Value.Beam_Parameters.Value.ID.Value != 0)
+                        {
+                            Console.WriteLine("Writing Beam with ID:{0} to the database.", Beamsdb.Beams.Value.Beam[i].Value.Beam_Parameters.Value.ID.Value);
+                            //command is use to perform read and write operations in the database 
+                            //Command object, which is used to execute the SQL statement against the database
+                            command = new SqlCommand(sql.SqlQueryInserting(Beamsdb.Beams.Value.Beam[i].Value, currentBeamPointer), cnn);
+                            //DataAdapter object is used to perform specific SQL operations such as insert, delete and update commands
+                            SqlDataAdapter adapter = new SqlDataAdapter();
+                            //we now associate the insert SQL command to our adapter
+                            adapter.InsertCommand = new SqlCommand(sql.SqlQueryInserting(Beamsdb.Beams.Value.Beam[i].Value, currentBeamPointer), cnn);
+                            //then issue the ExecuteNonQuery method which is used to execute the Insert statement against our database
+                            adapter.InsertCommand.ExecuteNonQuery();
+                            //Dispose of all temp objects created
+                            adapter.Dispose();
+                            command.Dispose();
+                        }
+                    }
+                    for (int i = 0 + 1; i <= currentBeamPointer; i++)
+                    {
+                        if (Beamsdb.Beams.Value.Beam[i].Value.Beam_Parameters.Value.ID.Value != 0)
+                        {
+                            Console.WriteLine("Writing Beam with ID:{0} to the database.", Beamsdb.Beams.Value.Beam[i].Value.Beam_Parameters.Value.ID.Value);
+                            //command is use to perform read and write operations in the database 
+                            //Command object, which is used to execute the SQL statement against the database
+                            command = new SqlCommand(sql.SqlQueryInserting(Beamsdb.Beams.Value.Beam[i].Value, currentBeamPointer), cnn);
+                            //DataAdapter object is used to perform specific SQL operations such as insert, delete and update commands
+                            SqlDataAdapter adapter = new SqlDataAdapter();
+                            //we now associate the insert SQL command to our adapter
+                            adapter.InsertCommand = new SqlCommand(sql.SqlQueryInserting(Beamsdb.Beams.Value.Beam[i].Value, currentBeamPointer), cnn);
+                            //then issue the ExecuteNonQuery method which is used to execute the Insert statement against our database
+                            adapter.InsertCommand.ExecuteNonQuery();
+                            //Dispose of all temp objects created
+                            adapter.Dispose();
+                            command.Dispose();
+                        }
+                    }
+                }
+                // compare last DB entry with the same location on PLC buffer to determine roll overs
+                if (Beamsdb.Beams.Value.Beam[lastDBEntryBeamPointer].Value.Beam_Processing_Complete_Timestamp.Value.Ticks > lastDBEntryBeamDateStampTicks)
+                {
+                    // means PLC filled up the buffer and the buffer rolled over all the way back to the current pointer
+                    // Write everything from PLC buffer to DB except for anything with beamID= 0 
+                    foreach (var Beams in Beamsdb.Beams.Value.Beam)
+                    {
+                        if (Beams.Value.Beam_Parameters.Value.ID.Value != 0)
+                        {
+                            Console.WriteLine("Writing Beam with ID:{0} to the database.", Beams.Value.Beam_Parameters.Value.ID.Value);
+                            //command is use to perform read and write operations in the database 
+                            //Command object, which is used to execute the SQL statement against the database
+                            command = new SqlCommand(sql.SqlQueryInserting(Beams.Value, currentBeamPointer), cnn);
+                            //DataAdapter object is used to perform specific SQL operations such as insert, delete and update commands
+                            SqlDataAdapter adapter = new SqlDataAdapter();
+                            //we now associate the insert SQL command to our adapter
+                            adapter.InsertCommand = new SqlCommand(sql.SqlQueryInserting(Beams.Value, currentBeamPointer), cnn);
+                            //then issue the ExecuteNonQuery method which is used to execute the Insert statement against our database
+                            adapter.InsertCommand.ExecuteNonQuery();
+                            //Dispose of all temp objects created
+                            adapter.Dispose();
+                            command.Dispose();
+                        }
+                    }
+                }
+            }
 
             // Read Faults from PLC and write to DB
             //PropertyInfo[] robots = Faultsdb.Fault.GetType().GetProperties();
-            Type robots = Faultsdb.Faults.Value.GetType();
-            foreach (PropertyInfo robot in robots.GetProperties())
-            {
+            //Type robots = Faultsdb.Faults.Value.GetType();
+            //foreach (PropertyInfo robot in robots.GetProperties())
+            // {
 
-                Console.WriteLine("{0}", robot);
-                
+            //   Console.WriteLine("{0}", robot);
 
-                
-            }
+
+
+            // }
             //foreach (Faults_UDT robot in Faultsdb.Faults.Value)
             //{
 
-             //   Console.WriteLine("{0}", robot);
+            //   Console.WriteLine("{0}", robot);
 
             //}
 
-            Console.ReadKey();
             /*foreach (var i in Faultsdb.Fault.Value.Robot_Buffering)
             {
                 Console.WriteLine("{0}-{1}-{2}-{3}",i.Value.Alarm_No.Value, i.Value.Alarm_ID.Value, i.Value.Alarm_Severity.Value, i.Value.Alarm_Timestamp.Value);
@@ -112,13 +392,12 @@ namespace DataGrabber
             // =================================================
             // Connecting to Database
             // =================================================
-            string connetionString = @"Data Source=localhost\SQLEXPRESS;Initial Catalog=BeamDatabase;Integrated Security=True";
+            string connetionString = @"Data Source=localhost\SQLEXPRESS;Initial Catalog=BeamDatabase;Integrated Security=True;MultipleActiveResultSets=true";
             bool useDatabase = true;
 
             SqlConnection cnn = new SqlConnection(connetionString);
             try
             {
-
                 cnn.Open();
             }
             catch (Exception e)
@@ -149,6 +428,7 @@ namespace DataGrabber
             // =================================================
             var scadaDB = new Beams_for_SCADA();
             var faultDB = new Faults_for_SCADA();
+            var sql = new sqlObjects();
             var scadaDBNumber = 113;
             var faultDBNumber = 114;
 
@@ -224,8 +504,8 @@ namespace DataGrabber
 
                     Console.WriteLine("\n" + $"Reading from PLC Beam / Fault DataBase on {DateTime.Now}");
                     Console.WriteLine(beamdb);
-                    WriteToSqlDB(cnn , beamdb, faultdb);
-
+                    WriteToSqlDB(cnn , sql, beamdb, faultdb);
+                    Console.WriteLine("\n"+"---------------------------------------------------------"+ "\n");
                 });                 
 
 

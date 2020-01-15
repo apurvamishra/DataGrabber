@@ -8,7 +8,7 @@ namespace DataGrabber.PLCStructures
         [Order(1)]
         public JPLCProperty<short> Beam_Pointer { get; set; }
         [Order(2)]
-        [ArraySize(200)]
+        [ArraySize(201)]
         public JPLCProperty<Beam_UDT>[] Beam { get; set; }
 
         public Beams_UDT(int address = 0) : base(address) { }

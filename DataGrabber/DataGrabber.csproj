@@ -111,6 +111,7 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <DependentUpon>Settings.settings</DependentUpon>
     </Compile>
+    <Compile Include="SQL\sqlObjects.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
