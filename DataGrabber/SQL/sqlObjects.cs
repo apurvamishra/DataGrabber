@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Data.SqlClient;
 //using JPLC;
 using System.Globalization;
 using DataGrabber.PLCStructures;
@@ -11,7 +12,7 @@ namespace DataGrabber.SQL
 {
     class sqlObjects
     {
-        public string SqlQueryInserting(Beam_UDT Beam, int pointer)
+        public string SqlQueryInsertIntoBeams(Beam_UDT Beam, int pointer)
         {
             return "INSERT INTO Beams (" +
                                   "BeamID" + "," +
@@ -82,7 +83,72 @@ namespace DataGrabber.SQL
                                     "\'" + Beam.Beam_Process_Stage.Value.beam_at_reject.Value + "\'" +
                                     ")";
         }
+        public string SqlQueryInsertIntoAlarms(Alarm_UDT Alarm, int pointer)
+        {
+            return "INSERT INTO Alarms (" +
+                                  "UniqueID" + "," +
+                                  "RobotName" + "," +
+                                  "AlarmID" + "," +
+                                  "AlarmNo" + "," +
+                                  "AlarmSeverity" + "," +
+                                  "AlarmTimestamp" + "," +
+                                  "Ticks" + "," +
+                                  "Pointer" + "," +
+                                  ")" +
+                               " Values (" +
+                                    "\'" + Alarm.Alarm_ID.Value + "-" + Alarm.Alarm_Timestamp.Value.ToString("s", new CultureInfo("en-US")) + "\'" + "," +
+                                    Alarm.Robot_Name.Value + "," +
+                                    Alarm.Alarm_ID.Value + "," +
+                                    Alarm.Alarm_No.Value + "," +
+                                    Alarm.Alarm_Severity.Value + "," +
+                                    // date format in SQL DB 09/13/2019 9:17:56 AM - US
+                                    // date format from PLC 13/09/2019 9:17:56 AM - British
+                                    "\'" + Alarm.Alarm_Timestamp.Value.ToString("G", new CultureInfo("en-US")) + "\'" + "," +
+                                    Alarm.Alarm_Timestamp.Value.Ticks + "," +
+                                    pointer + "," +
+                                    ")";
+        }
 
+        public void writeBeamToDB(Beam_UDT Beam, SqlCommand command, int Pointer, SqlConnection cnn)
+        {
+            // Write everything from PLC buffer to DB except for anything with BeamID= 0 
+            if (Beam.Beam_Parameters.Value.ID.Value != 0)
+            {
+                Console.WriteLine("Writing Beam with ID:{0} to the database.", Beam.Beam_Parameters.Value.ID.Value);
+                //command is use to perform read and write operations in the database 
+                //Command object, which is used to execute the SQL statement against the database
+                command = new SqlCommand(SqlQueryInsertIntoBeams(Beam, Pointer), cnn);
+                //DataAdapter object is used to perform specific SQL operations such as insert, delete and update commands
+                SqlDataAdapter adapter = new SqlDataAdapter();
+                //we now associate the insert SQL command to our adapter
+                adapter.InsertCommand = new SqlCommand(SqlQueryInsertIntoBeams(Beam, Pointer), cnn);
+                //then issue the ExecuteNonQuery method which is used to execute the Insert statement against our database
+                adapter.InsertCommand.ExecuteNonQuery();
+                //Dispose of all temp objects created
+                adapter.Dispose();
+                command.Dispose();
+            }
+        }
+        public void writeAlarmToDB(Alarm_UDT Alarms, SqlCommand command, int Pointer, SqlConnection cnn)
+        {
+            // Write everything from PLC buffer to DB except for anything with AlarmID= 0 
+            if (Alarms.Alarm_ID.Value != 0)
+            {
+                Console.WriteLine("Writing Alarm with ID:{0} to the database.", Alarms.Alarm_ID.Value);
+                //command is use to perform read and write operations in the database 
+                //Command object, which is used to execute the SQL statement against the database
+                command = new SqlCommand(SqlQueryInsertIntoAlarms(Alarms, Pointer), cnn);
+                //DataAdapter object is used to perform specific SQL operations such as insert, delete and update commands
+                SqlDataAdapter adapter = new SqlDataAdapter();
+                //we now associate the insert SQL command to our adapter
+                adapter.InsertCommand = new SqlCommand(SqlQueryInsertIntoAlarms(Alarms, Pointer), cnn);
+                //then issue the ExecuteNonQuery method which is used to execute the Insert statement against our database
+                adapter.InsertCommand.ExecuteNonQuery();
+                //Dispose of all temp objects created
+                adapter.Dispose();
+                command.Dispose();
+            }
+        }
         public string SqlDBconnetionString()
         {
             return "Data Source=localhost\\SQLEXPRESS;Initial Catalog=BeamDatabase;Integrated Security=True";
